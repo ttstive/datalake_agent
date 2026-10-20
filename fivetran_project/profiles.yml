@@ -1,0 +1,9 @@
+fivetran_project:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      schema: default
+      host: dbc-6bfa7194-26aa.cloud.databricks.com
+      http_path: /sql/1.0/warehouses/f5ba16ce224095c7
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
