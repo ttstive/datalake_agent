@@ -16,12 +16,12 @@ VOLUME ?= landing
 
 .PHONY: help kafka-up kafka-down kafka-ui kafka-logs topics consume produce test lint \
 	db-whoami db-setup ingest-build ingest-up ingest-down ingest-logs validate deploy run-bronze \
-	mlflow-up mlflow-ui mlflow-logs agent-metrics-backfill
+	mlflow-up mlflow-ui mlflow-logs agent-metrics-backfill agent-evals
 
 help:
 	@echo "Targets: kafka-up kafka-down kafka-ui kafka-logs topics consume produce test lint"
 	@echo "         db-whoami db-setup ingest-build ingest-up ingest-down ingest-logs validate deploy run-bronze"
-	@echo "         mlflow-up mlflow-ui mlflow-logs agent-metrics-backfill"
+	@echo "         mlflow-up mlflow-ui mlflow-logs agent-metrics-backfill agent-evals"
 
 kafka-up: ## Start Kafka + UI (http://127.0.0.1:8080), wait until healthy, create the orders topic
 	$(COMPOSE) up -d --wait kafka kafka-ui
@@ -106,3 +106,6 @@ mlflow-logs:
 
 agent-metrics-backfill: ## Log token/context metrics of all existing Claude Code transcripts of this project
 	uv run python observability/claude_mlflow_hook.py --backfill
+
+agent-evals: ## Score the Claude Code team against the project rules (MLflow experiment claude-agents-evals), e.g. make agent-evals ARGS="--session ID --no-mlflow"
+	uv run python observability/agent_evals.py $(ARGS)
