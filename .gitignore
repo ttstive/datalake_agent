@@ -8,7 +8,6 @@ checkpoints/
 .databricks/
 .claude/settings.local.json
 /video
-.databricks
 
 # Claude Code -> MLflow hook state/logs (observability/) and built-in tracer log
 observability/.state/

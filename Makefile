@@ -15,12 +15,14 @@ SCHEMA ?= ecommerce
 VOLUME ?= landing
 
 .PHONY: help kafka-up kafka-down kafka-ui kafka-logs topics consume produce test lint \
-	db-whoami db-setup ingest-build ingest-up ingest-down ingest-logs validate deploy run-bronze \
+	db-whoami db-setup ingest-build ingest-up ingest-down ingest-logs validate deploy run-pipeline run-bronze \
+	schedule-on schedule-off schedule-status \
 	mlflow-up mlflow-ui mlflow-logs agent-metrics-backfill agent-evals
 
 help:
 	@echo "Targets: kafka-up kafka-down kafka-ui kafka-logs topics consume produce test lint"
-	@echo "         db-whoami db-setup ingest-build ingest-up ingest-down ingest-logs validate deploy run-bronze"
+	@echo "         db-whoami db-setup ingest-build ingest-up ingest-down ingest-logs validate deploy"
+	@echo "         run-pipeline (alias: run-bronze) schedule-on schedule-off schedule-status"
 	@echo "         mlflow-up mlflow-ui mlflow-logs agent-metrics-backfill agent-evals"
 
 kafka-up: ## Start Kafka + UI (http://127.0.0.1:8080), wait until healthy, create the orders topic
@@ -74,8 +76,22 @@ validate: ## Validate the Asset Bundle (dev target)
 deploy: validate ## Validate + deploy the bundle to dev (job schedule stays PAUSED)
 	$(DATABRICKS) bundle deploy -t dev
 
-run-bronze: ## Run the orders_ingestion job once (landing -> bronze_orders) and wait
+run-pipeline: ## Run the orders_ingestion job once (bronze -> silver -> gold) and wait
 	$(DATABRICKS) bundle run -t dev orders_ingestion
+
+run-bronze: run-pipeline ## Deprecated alias: the job now runs bronze -> silver -> gold
+
+# Schedule toggle goes through the bundle (var schedule_pause_status), so the deployed
+# state always matches what `bundle deploy` would set. NOTE: a plain `make deploy` resets it to PAUSED.
+schedule-on: validate ## UNPAUSE the 5-min schedule. COSTS MONEY: serverless compute every 5 min (288 runs/day)
+	@echo "WARNING: orders_ingestion will run on serverless compute every 5 minutes until 'make schedule-off'."
+	$(DATABRICKS) bundle deploy -t dev --var="schedule_pause_status=UNPAUSED"
+
+schedule-off: ## Pause the 5-min schedule (redeploys the bundle with PAUSED)
+	$(DATABRICKS) bundle deploy -t dev --var="schedule_pause_status=PAUSED"
+
+schedule-status: ## Show the deployed job's schedule pause_status
+	@$(DATABRICKS) bundle summary -t dev -o json | python3 -c 'import sys,json; j=json.load(sys.stdin)["resources"]["jobs"]["orders_ingestion"]; print(j.get("schedule",{}).get("pause_status"))'
 
 # ---- Local Spark ingestor (Kafka -> UC Volume) ------------------------------
 # Needs DATABRICKS_TOKEN in the root .env (compose interpolates it; never baked into the image).

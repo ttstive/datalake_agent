@@ -80,6 +80,8 @@ services:
     restart: unless-stopped        # required: a failed upload exits 1 and the restart replays the batch
     init: true                     # tini as PID 1 ...
     stop_grace_period: 30s
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     command: ["/opt/spark/bin/spark-submit", "--master", "local[*]", "/app/ingest_orders.py"]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092

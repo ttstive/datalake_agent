@@ -37,15 +37,17 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] devops: Asset Bundle job `orders_ingestion` every 5 min (deployed, PAUSED)
 - [x] end-to-end run: producer → Kafka → landing → bronze (374 rows / 2 batches, no gaps or dups, 2026-10-27)
 - [!] security review: token handling in container, volume/schema grants → [report](security/2026-10-27-phase2-review.md) (blocked on #1)
-- [ ] user: confirm unpausing the 5-min schedule
+- [ ] user: confirm unpausing the 5-min schedule (`make schedule-on` / `make schedule-off`)
 
-## Phase 3 — ELT layers (data-engineer)
-- [ ] silver: explicit schema, dedup, watermark
-- [ ] gold: orders per minute, revenue by category, order status funnel
-- [ ] gold: pipeline health (rows and latency per layer)
-- [ ] data quality expectations
+## Phase 3 — ELT layers (data-engineer + devops)
+- [x] data-engineer: `02_silver.py` → `silver_orders` (typed, deduped by `event_id`), `silver_orders_quarantine` (data quality), `silver_order_status` (current state per order)
+- [x] data-engineer: `03_gold.py` → orders per minute, revenue by category, status funnel, pipeline health (+ history)
+- [x] data-engineer: `dashboards/README.md` guide + tested SQL for the user's dashboard
+- [x] devops: job tasks bronze → silver → gold, `make run-pipeline`, `schedule-on/off`
+- [x] leader: deploy + first full run (2026-10-27): bronze 1821 → silver 1801 (19 dups removed) + 1 quarantined, 759 orders, gold funnel/health populated
+- [~] security review: Phase 3 changes + still-unreviewed MLflow hook and eval suite
 
-## Phase 4 — Dashboard (data-engineer + devops)
+## Phase 4 — Dashboard (user builds it in Databricks)
 - [ ] dashboard datasets + layout (one section per pipeline step)
 - [ ] deploy dashboard via bundle, auto-refresh
 - [ ] security review: dashboard sharing, UC grants

@@ -25,6 +25,9 @@ variables:
   schema:
     description: Schema holding landing volume and bronze/silver/gold tables
     default: ecommerce
+  schedule_pause_status:
+    description: "orders_ingestion schedule state: PAUSED (default) or UNPAUSED. UNPAUSED runs serverless compute every 5 min (costs money)."
+    default: PAUSED
 
 targets:
   dev:

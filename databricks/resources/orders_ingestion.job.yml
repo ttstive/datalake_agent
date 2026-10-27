@@ -1,19 +1,42 @@
-# Landing Volume -> bronze_orders (Auto Loader, availableNow). See ADR-002.
+# Landing Volume -> bronze_orders (Auto Loader, availableNow) -> silver -> gold. See ADR-002.
 # Serverless: no cluster spec, so notebook tasks run on serverless compute.
-# Deployed PAUSED: 288 runs/day — unpause only after the user confirms.
+# Deployed PAUSED by default (var.schedule_pause_status): 288 runs/day when unpaused —
+# unpause only after the user confirms (`make schedule-on`).
 resources:
   jobs:
     orders_ingestion:
       name: orders_ingestion
       max_concurrent_runs: 1
+      timeout_seconds: 3600            # whole run (bronze + silver + gold)
       schedule:
         quartz_cron_expression: "0 0/5 * * * ?"   # every 5 minutes
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: ${var.schedule_pause_status}
       tasks:
         - task_key: bronze
+          timeout_seconds: 1200
           notebook_task:
             notebook_path: ../src/01_bronze.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+
+        - task_key: silver
+          depends_on:
+            - task_key: bronze
+          timeout_seconds: 1200
+          notebook_task:
+            notebook_path: ../src/02_silver.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+
+        - task_key: gold
+          depends_on:
+            - task_key: silver
+          timeout_seconds: 1200
+          notebook_task:
+            notebook_path: ../src/03_gold.py
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
