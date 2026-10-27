@@ -1,0 +1,19 @@
+# Landing Volume -> bronze_orders (Auto Loader, availableNow). See ADR-002.
+# Serverless: no cluster spec, so notebook tasks run on serverless compute.
+# Deployed PAUSED: 288 runs/day — unpause only after the user confirms.
+resources:
+  jobs:
+    orders_ingestion:
+      name: orders_ingestion
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0/5 * * * ?"   # every 5 minutes
+        timezone_id: UTC
+        pause_status: PAUSED
+      tasks:
+        - task_key: bronze
+          notebook_task:
+            notebook_path: ../src/01_bronze.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}

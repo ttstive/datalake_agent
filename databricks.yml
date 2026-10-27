@@ -1,0 +1,40 @@
+# This is a Declarative Automation Bundle definition for datalake_duckdb.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: datalake_duckdb
+
+include:
+  - databricks/resources/*.yml
+
+# Only upload the Databricks code, not the whole repo (dbt project, tests, local tooling).
+sync:
+  paths:
+    - ./databricks
+  exclude:
+    - "**/__pycache__"
+
+# UC objects (schema `ecommerce`, managed volume `landing`) are created by `make db-setup`,
+# not as bundle resources: dev mode would prefix the schema name (dev_<user>_ecommerce) and
+# `bundle destroy` would drop the data.
+variables:
+  catalog:
+    description: Unity Catalog catalog (Free Edition default)
+    default: workspace
+  schema:
+    description: Schema holding landing volume and bronze/silver/gold tables
+    default: ecommerce
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-6bfa7194-26aa.cloud.databricks.com
+
+  ## Optionally, there could be 'staging' or 'prod' targets here.
+  #
+  # prod:
+  #   workspace:
+  #     host: https://dbc-6bfa7194-26aa.cloud.databricks.com

@@ -1,0 +1,69 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)"
+    ]
+  },
+  "enabledPlugins": {
+    "databricks@claude-plugins-official": true
+  },
+  "env": {
+    "MLFLOW_TRACKING_URI": "http://127.0.0.1:5000",
+    "MLFLOW_CLAUDE_TRACING_ENABLED": "true",
+    "CLAUDE_MLFLOW_TRACES_EXPERIMENT": "claude-agents-traces",
+    "CLAUDE_CONTEXT_WINDOW": "200000"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/observability/claude_mlflow_hook.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/observability/claude_mlflow_hook.py --trace",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/observability/claude_mlflow_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/observability/claude_mlflow_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.venv/bin/python \"$CLAUDE_PROJECT_DIR\"/observability/claude_mlflow_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,135 @@
+# Local single-node Kafka (KRaft, no ZooKeeper) + web UI for development.
+# Start: docker compose up -d   Stop: docker compose down   (data kept; add -v to wipe)
+# Host clients connect to 127.0.0.1:9092; containers on this network use kafka:29092.
+name: datalake-kafka
+
+services:
+  kafka:
+    image: apache/kafka:4.1.0
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - "127.0.0.1:9092:9092"   # host only — never 0.0.0.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: HOST://0.0.0.0:9092,DOCKER://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: HOST://127.0.0.1:9092,DOCKER://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # One-shot: create the `orders` topic (idempotent), then exit.
+  kafka-init:
+    image: apache/kafka:4.1.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
+          --create --if-not-exists --topic orders \
+          --partitions 3 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --describe --topic orders
+
+  # Web UI (brokers, topics, messages): http://127.0.0.1:8080
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:v1.4.2
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      DYNAMIC_CONFIG_ENABLED: "false"
+
+  # Spark Structured Streaming: Kafka -> Parquet micro-batches -> UC Volume (ADR-002).
+  # Behind the `ingest` profile: `make ingest-up` (plain `docker compose up -d` skips it).
+  # DATABRICKS_TOKEN is interpolated from the root .env at runtime — never baked into the image.
+  spark-ingestor:
+    profiles: ["ingest"]
+    build:
+      context: ./docker/spark-ingestor
+    image: datalake/spark-ingestor:4.0.4
+    container_name: spark-ingestor
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped        # required: a failed upload exits 1 and the restart replays the batch
+    init: true                     # tini as PID 1 ...
+    stop_grace_period: 30s
+    command: ["/opt/spark/bin/spark-submit", "--master", "local[*]", "/app/ingest_orders.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: orders
+      TRIGGER_INTERVAL: ${TRIGGER_INTERVAL:-5 minutes}
+      CHECKPOINT_DIR: /checkpoints/orders
+      DATABRICKS_HOST: https://dbc-6bfa7194-26aa.cloud.databricks.com
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN}
+      DATABRICKS_CATALOG: workspace
+      DATABRICKS_SCHEMA: ecommerce
+      LANDING_VOLUME: landing
+      STARTING_OFFSETS: ${STARTING_OFFSETS:-earliest}
+      MAX_OFFSETS_PER_TRIGGER: ${MAX_OFFSETS_PER_TRIGGER:-100000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TINI_KILL_PROCESS_GROUP: "1"  # ... signals the whole group (JVM + Python child) on stop
+    volumes:
+      - ./spark:/app:ro
+      - spark-checkpoints:/checkpoints
+    ports:
+      - "127.0.0.1:4040:4040"   # Spark UI, host only
+
+  # MLflow tracking server (open source): Claude Code agent metrics now, project MLOps later.
+  # UI/API: http://127.0.0.1:5000 (host only). SQLite backend + artifacts on the mlflow-data volume.
+  # Starts with plain `docker compose up -d` (no profile). Client pinned to the same version (mlflow-skinny 3.8.1).
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.8.1
+    container_name: mlflow
+    restart: unless-stopped
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0              # inside the container; published to 127.0.0.1 only (below)
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      - --serve-artifacts
+      - --workers=2
+      - --allowed-hosts=localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,mlflow,mlflow:5000
+    ports:
+      - "127.0.0.1:5000:5000"   # host only — never 0.0.0.0
+    volumes:
+      - mlflow-data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  kafka-data:
+  spark-checkpoints:
+  mlflow-data:

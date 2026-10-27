@@ -1,1 +1,15 @@
 .env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+logs/
+checkpoints/
+.databricks/
+.claude/settings.local.json
+
+.databricks
+
+# Claude Code -> MLflow hook state/logs (observability/) and built-in tracer log
+observability/.state/
+.claude/mlflow/
